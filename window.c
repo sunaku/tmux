@@ -383,6 +383,34 @@ window_resize(struct window *w, u_int sx, u_int sy)
 	w->sy = sy;
 }
 
+/*
+ * Commandeers the transfer of focus from `wp` to `wp2` in order to mark `wp`
+ * so that window_pane_refocus is able to restore focus to it when necessary.
+ */
+static void
+window_pane_defocus(struct window_pane *wp, struct window_pane *wp2)
+{
+	struct layout_cell *lc, *lc2;
+
+	/* remember the target pane's focus in its parent */
+	wp2->layout_cell->parent->wp = wp2;
+
+	if (wp == NULL)
+		return;
+
+	/* remember the source pane's focus in all of its parents up to, but
+	 * not including, the common ancestor of itself and the target pane */
+	for(lc = wp->layout_cell->parent; lc != NULL; lc = lc->parent) {
+		/* search for a common ancestor in the target's lineage */
+		for(lc2 = wp2->layout_cell->parent; lc2 != NULL; lc2 = lc2->parent)
+			if (lc == lc2)
+				/* found a common ancestor so stop here */
+				return;
+		/* remember the source pane's focus in its uncommon parent */
+		lc->wp = wp;
+	}
+}
+
 void
 window_set_active_pane(struct window *w, struct window_pane *wp)
 {
@@ -390,6 +418,7 @@ window_set_active_pane(struct window *w, struct window_pane *wp)
 		return;
 	w->last = w->active;
 	w->active = wp;
+	window_pane_defocus(w->last, wp);
 	while (!window_pane_visible(w->active)) {
 		w->active = TAILQ_PREV(w->active, window_panes, entry);
 		if (w->active == NULL)
@@ -704,6 +733,14 @@ window_pane_create(struct window *w, u_int sx, u_int sy, u_int hlimit)
 void
 window_pane_destroy(struct window_pane *wp)
 {
+	/* forget removed pane's focus in all layout cells that remember it */
+	struct window_pane *wp2;
+	RB_FOREACH(wp2, window_pane_tree, &all_window_panes)
+		if (wp2->layout_cell != NULL &&
+		    wp2->layout_cell->parent != NULL &&
+		    wp2->layout_cell->parent->wp == wp)
+			wp2->layout_cell->parent->wp = NULL; /* forget pane */
+
 	window_pane_reset_mode(wp);
 
 	if (event_initialized(&wp->changes_timer))
@@ -1110,6 +1147,30 @@ window_pane_search(struct window_pane *wp, const char *searchstr, u_int *lineno)
 	return (msg);
 }
 
+/*
+ * Commandeers the transfer of focus from `wp` to `wp2` in order to restore
+ * focus to a previously focused window pane marked by window_pane_defocus.
+ * If this is not possible, the transfer proceeds as originally intended.
+ */
+static struct window_pane *
+window_pane_refocus(struct window_pane *wp, struct window_pane *wp2)
+{
+	struct layout_cell *lc;
+	struct window_pane *fp; /* pane marked by window_pane_defocus */
+
+	/* target pane's parent must not be an ancestor of source pane */
+	for (lc = wp->layout_cell->parent; lc != NULL; lc = lc->parent)
+		if (lc == wp2->layout_cell->parent)
+			return (wp2);
+
+	/* transfer would halt if focused pane was same as source pane */
+	fp = wp2->layout_cell->parent->wp;
+	if (fp != wp && fp != NULL && window_pane_visible(fp))
+		return (fp);
+	else
+		return (wp2);
+}
+
 /* Find the pane directly above another. */
 struct window_pane *
 window_pane_find_up(struct window_pane *wp)
@@ -1131,7 +1192,7 @@ window_pane_find_up(struct window_pane *wp)
 		if (wp2->yoff + wp2->sy + 1 != top)
 			continue;
 		if (left >= wp2->xoff && left <= wp2->xoff + wp2->sx)
-			return (wp2);
+			return window_pane_refocus(wp, wp2);
 	}
 	return (NULL);
 }
@@ -1157,7 +1218,7 @@ window_pane_find_down(struct window_pane *wp)
 		if (wp2->yoff != bottom)
 			continue;
 		if (left >= wp2->xoff && left <= wp2->xoff + wp2->sx)
-			return (wp2);
+			return window_pane_refocus(wp, wp2);
 	}
 	return (NULL);
 }
@@ -1186,7 +1247,7 @@ window_pane_find_left(struct window_pane *wp)
 		if (wp2->xoff + wp2->sx + 1 != left)
 			continue;
 		if (top >= wp2->yoff && top <= wp2->yoff + wp2->sy)
-			return (wp2);
+			return window_pane_refocus(wp, wp2);
 	}
 	return (NULL);
 }
@@ -1215,7 +1276,7 @@ window_pane_find_right(struct window_pane *wp)
 		if (wp2->xoff != right)
 			continue;
 		if (top >= wp2->yoff && top <= wp2->yoff + wp2->sy)
-			return (wp2);
+			return window_pane_refocus(wp, wp2);
 	}
 	return (NULL);
 }
