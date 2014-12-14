@@ -114,5 +114,7 @@ cmd_set_buffer_exec(struct cmd *self, struct cmd_q *cmdq)
 		return (CMD_RETURN_ERROR);
 	}
 
+	paste_set_clipboard(pdata, psize, cmdq);
+
 	return (CMD_RETURN_NORMAL);
 }

@@ -152,6 +152,8 @@ cmd_load_buffer_callback(struct client *c, int closed, void *data)
 		free(cause);
 	}
 
+	paste_set_clipboard(pdata, psize, c->cmdq);
+
 out:
 	cmdq_continue(c->cmdq);
 }

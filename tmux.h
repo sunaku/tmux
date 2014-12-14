@@ -1670,6 +1670,7 @@ int		 paste_free_name(const char *);
 void		 paste_add(char *, size_t);
 int		 paste_rename(const char *, const char *, char **);
 int		 paste_set(char *, size_t, const char *, char **);
+void	 	 paste_set_clipboard(char *, size_t, struct cmd_q *);
 char		*paste_make_sample(struct paste_buffer *, int);
 void		 paste_send_pane(struct paste_buffer *, struct window_pane *,
 		     const char *, int);

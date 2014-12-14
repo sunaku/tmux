@@ -219,6 +219,23 @@ paste_rename(const char *oldname, const char *newname, char **cause)
 	return (0);
 }
 
+void
+paste_set_clipboard(char *buf, size_t len, struct cmd_q *cmdq)
+{
+	struct screen_write_ctx	ctx;
+	struct window_pane	*wp;
+
+	if (!options_get_number(&global_options, "set-clipboard"))
+		return;
+
+	if (cmd_find_pane(cmdq, NULL, NULL, &wp) == NULL)
+		return;
+
+	screen_write_start(&ctx, wp, NULL);
+	screen_write_setselection(&ctx, buf, len);
+	screen_write_stop(&ctx);
+}
+
 /*
  * Add or replace an item in the store. Note that the caller is responsible for
  * allocating data.
